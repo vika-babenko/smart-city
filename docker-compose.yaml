@@ -1,0 +1,143 @@
+version: "3.9"
+
+services:
+  # ============ MQTT ============
+  mqtt:
+    image: eclipse-mosquitto
+    container_name: mqtt
+    # Якщо ви хочете скопіювати локальні конфіги mosquitto, закоментовані volumes:
+    volumes:
+    - ./agent/docker/mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf
+    #   - ./mosquitto/data:/mosquitto/data
+    #   - ./mosquitto/log:/mosquitto/log
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    networks:
+      - road_vision_net
+
+  # ============ PostgreSQL ============
+  postgres_db:
+    image: postgres:latest
+    container_name: postgres_db
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+      POSTGRES_DB: test_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./store/docker/db/structure.sql:/docker-entrypoint-initdb.d/structure.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - road_vision_net
+
+  # ============ pgAdmin ============
+  pgadmin:
+    container_name: pgadmin4
+    image: dpage/pgadmin4
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: root
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    ports:
+      - "5050:80"
+    networks:
+      - road_vision_net
+
+  # ============ Redis (для hub) ============
+  redis:
+    image: redis:latest
+    container_name: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - road_vision_net
+
+  # ============ store ============
+  store:
+    container_name: store
+    # Припустимо, ваш Dockerfile лежить у папці `store/`.
+    build: ./store
+    depends_on:
+      - postgres_db
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+      POSTGRES_DB: test_db
+      POSTGRES_HOST: postgres_db
+      POSTGRES_PORT: "5432"
+    ports:
+      - "8000:8000"
+    networks:
+      - road_vision_net
+
+  # ============ hub ============
+  hub:
+    container_name: hub
+    # Припустимо, Dockerfile у `hub/`.
+    build: ./hub
+    depends_on:
+      - mqtt
+      - redis
+      - store
+    environment:
+      STORE_API_HOST: "store"
+      STORE_API_PORT: "8000"
+      REDIS_HOST: "redis"
+      REDIS_PORT: "6379"
+      MQTT_BROKER_HOST: "mqtt"
+      MQTT_BROKER_PORT: "1883"
+      MQTT_TOPIC: "processed_data_topic"  # як у вас у коді
+      BATCH_SIZE: "1"                     # якщо потрібно
+    ports:
+      - "9000:8000"
+    networks:
+      - road_vision_net
+
+  # ============ edge ============
+  edge:
+    container_name: edge
+    build: ./edge
+    depends_on:
+      - mqtt
+      - hub
+    environment:
+      MQTT_BROKER_HOST: "mqtt"
+      MQTT_BROKER_PORT: "1883"
+      MQTT_TOPIC: "agent_data_topic"
+      HUB_HOST: "hub"
+      HUB_PORT: "8000"
+      HUB_MQTT_BROKER_HOST: "mqtt"
+      HUB_MQTT_BROKER_PORT: "1883"
+      HUB_MQTT_TOPIC: "processed_data_topic"
+    networks:
+      - road_vision_net
+
+  # ============ agent (fake_agent) ============
+  agent:
+    container_name: agent
+    # Dockerfile у `agent/`.
+    build: ./agent
+    depends_on:
+      - mqtt
+    environment:
+      MQTT_BROKER_HOST: "mqtt"
+      MQTT_BROKER_PORT: "1883"
+      MQTT_TOPIC: "agent_data_topic"
+      DELAY: "0.1"
+    networks:
+      - road_vision_net
+
+# ============ Networks ============
+networks:
+  road_vision_net:
+
+# ============ Volumes ============
+volumes:
+  postgres_data:
+  pgadmin-data:
