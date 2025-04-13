@@ -5,7 +5,6 @@ services:
   mqtt:
     image: eclipse-mosquitto
     container_name: mqtt
-    # Якщо ви хочете скопіювати локальні конфіги mosquitto, закоментовані volumes:
     volumes:
     - ./agent/docker/mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf
     #   - ./mosquitto/data:/mosquitto/data
@@ -60,7 +59,6 @@ services:
   # ============ store ============
   store:
     container_name: store
-    # Припустимо, ваш Dockerfile лежить у папці `store/`.
     build: ./store
     depends_on:
       - postgres_db
@@ -79,7 +77,6 @@ services:
   # ============ hub ============
   hub:
     container_name: hub
-    # Припустимо, Dockerfile у `hub/`.
     build: ./hub
     depends_on:
       - mqtt
@@ -92,8 +89,8 @@ services:
       REDIS_PORT: "6379"
       MQTT_BROKER_HOST: "mqtt"
       MQTT_BROKER_PORT: "1883"
-      MQTT_TOPIC: "processed_data_topic"  # як у вас у коді
-      BATCH_SIZE: "1"                     # якщо потрібно
+      MQTT_TOPIC: "processed_data_topic"
+      BATCH_SIZE: "1"
     ports:
       - "9000:8000"
     networks:
